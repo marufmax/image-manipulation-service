@@ -1,5 +1,5 @@
 .env
 vendor
-storage/
+storage/*
 .idea
 composer.lock
