@@ -1,26 +1,44 @@
 <?php
 
+use App\Storage\Exceptions\FileNotFoundException;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Slim\Psr7\Response;
+use function Slim\Psr7\Response;
+
 $app->get('/', function ($request, $response, $args) {
    return 'Welcome';
 });
 
-$app->get('/{path}', function ($request, $response, $args) {
+$app->get('/{path}', function (ServerRequestInterface $request, ResponseInterface $response, $args) {
     
     try {
         $key = "image:{$args['path']}:{$_SERVER['QUERY_STRING']}";
         
-        // var_dump($request->getQueryParams()); exit();
+        $cache = $this->get('cache');
         
-        $image = $this->cache->remember($key, null, function () use ($request, $args) {
-            return  $this->image
-                        ->load($this->storage->get($args['path'])->read())
-                        ->withFilters($request->getParams())
+        $file = $cache->remember($key, null, function () use ($request, $args) {
+            $image = $this->get('image');
+            $storage = $this->get('storage');
+
+            return $image->load($storage->get($args['path'])->read())
+                        ->withFilters($request->getQueryParams())
                         ->stream();
         });
         
-    } catch (\App\Storage\Exceptions\FileNotFoundException $e) {
+    } catch (FileNotFoundException $e) {
         return $response->withStatus(404)->write('File not found');
     }
     
-    return $response->withHeader('Content-Type', 'image/png')->write($image);
+    if(!is_resource($file)) {
+        $image = $this->get('image');
+        
+        $file = $image->load($file)->stream();
+    }
+    
+    $res = (new Response())
+                ->withHeader('Content-Type', 'image/png')
+                ->withBody($file);
+    
+    return $res;
 });

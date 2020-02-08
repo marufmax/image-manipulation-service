@@ -13,43 +13,51 @@ use Slim\App;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$app = new App([
-    'settings' => [
-        'displayErrorDetails' => true
-    ]
-]);
+$container = new \DI\Container();
+\Slim\Factory\AppFactory::setContainer($container);
+
+$app = \Slim\Factory\AppFactory::create();
+$app->addRoutingMiddleware();
+
 
 if (file_exists(__DIR__ . '/../.env')) {
     $env = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
     $env->load();
 }
 
-$container = $app->getContainer();
-
-$container['config'] = function ($c) {
+$container->set('config', function ($c) {
     return new Config(__DIR__ .'/../config');
-};
+});
 
-$container['storage'] = function ($e) {
-    $adapter = new Local($e->config->get('services.files.storage'));
+$container->set('storage', function ($c) {
+    $config = $c->get('config');
+    $adapter = new Local($config->get('services.files.storage'));
     
     return new FileStorage(new Filesystem($adapter));
-};
+});
 
-$container['image'] = function ($c) {
-    return new Manipulator(new ImageManager(), $c->config);
-};
+$container->set('image', function ($c) {
+    return new Manipulator(new ImageManager(), $c->get('config'));
+});
 
-$container['cache'] = function ($c) {
+$container->set('cache', function ($c) {
+    
+    $config = $c->get('config');
+    
     $client = new Predis([
         'scheme' => 'tcp',
-        'host'  => $c->config->get('database.redis.host'),
-        'port'  => $c->config->get('database.redis.port'),
-        'password'  => $c->config->get('database.redis.password') ?: null
+        'host'  => $config->get('database.redis.host'),
+        'port'  => $config->get('database.redis.port'),
+        'password'  => $config->get('database.redis.password') ?: null
     ]);
     
     return new RedisCache($client);
-};
+});
+
+$errorMiddleware = $app->addErrorMiddleware(true, true, true);
 
 
 require __DIR__ . '/../routes/web.php';
+
+// Run app
+$app->run();
